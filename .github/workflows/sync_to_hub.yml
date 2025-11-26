@@ -1,0 +1,22 @@
+name: Sync to Hugging Face hub
+on:
+  push:
+    branches: [main]
+
+  # to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+      - name: Push to hub
+        env:
+          # Token ini akan mengambil dari 'secret' yang kamu simpan di Tahap B tadi
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        # GANTI USERNAME DAN NAMA SPACE DI BAWAH INI ↓↓↓
+        run: git push https://huggingface.co/spaces/Iknasius/stunting-nlp-project main
