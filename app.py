@@ -27,13 +27,16 @@ def predict_stunting(umur, tinggi, jk):
     if model is None:
         return "Error: Model tidak ditemukan."
     
+    # --- PERBAIKAN DI SINI ---
+    # Paksa input jadi huruf kecil semua agar cocok dengan data latih
+    jk_fixed = jk.lower() 
+    
     # Siapkan DataFrame input
-    # (Kita isi kolom 'Status' dummy agar strukturnya cocok dengan pipeline training)
     data = pd.DataFrame({
         'Umur': [float(umur)],
         'Tinggi': [float(tinggi)],
-        'JK': [jk],
-        'Status': ['Normal'] 
+        'JK': [jk_fixed],     # <-- Gunakan variabel yang sudah di-lower()
+        'Status': ['normal']  # Ini juga sebaiknya huruf kecil jika data latihnya kecil
     })
     
     spark_df = spark.createDataFrame(data)
