@@ -12,12 +12,13 @@ spark = SparkSession.builder \
     .getOrCreate()
 
 # --- 2. LOAD MODEL ---
-MODEL_PATH = "model_rf_stunting"
+# Tetap menggunakan nama folder lama sesuai permintaan
+MODEL_PATH = "model_rf_stunting" 
 
 print("Sedang memuat model...")
 try:
     model = PipelineModel.load(MODEL_PATH)
-    print("✅ Model berhasil dimuat!")
+    print(f"✅ Model dari '{MODEL_PATH}' berhasil dimuat!")
 except Exception as e:
     model = None
     print(f"❌ Gagal memuat model: {e}")
@@ -25,17 +26,31 @@ except Exception as e:
 # --- 3. FUNGSI PREDIKSI ---
 def predict_stunting(umur, tinggi, jk):
     if model is None:
-        return "Error: Model tidak ditemukan."
+        return f"Error: Folder '{MODEL_PATH}' tidak ditemukan."
     
-    # Normalisasi Input (Huruf kecil)
+    # [VALIDASI] Batasi umur sesuai dataset (0-19 bulan)
+    if umur < 0 or umur > 19:
+        return "⚠️ Peringatan: Model ini hanya akurat untuk balita usia 0-19 bulan (sesuai dataset latih)."
+
+    # Normalisasi Input
     jk_fixed = jk.lower()
     
-    # Buat DataFrame
+    # [FEATURE ENGINEERING] Hitung Rasio Manual
+    try:
+        umur_float = float(umur)
+        tinggi_float = float(tinggi)
+        # Rumus Rasio = Tinggi / (Umur + 0.1)
+        rasio_calc = tinggi_float / (umur_float + 0.1)
+    except ValueError:
+        return "Error: Input harus berupa angka."
+
+    # Buat DataFrame (Sertakan kolom 'Rasio')
     data = pd.DataFrame({
-        'Umur': [float(umur)],
-        'Tinggi': [float(tinggi)],
+        'Umur': [umur_float],
+        'Tinggi': [tinggi_float],
         'JK': [jk_fixed],
-        'Status': ['normal'] # Dummy value
+        'Status': ['normal'], # Dummy
+        'Rasio': [rasio_calc] 
     })
     
     spark_df = spark.createDataFrame(data)
@@ -43,18 +58,9 @@ def predict_stunting(umur, tinggi, jk):
     try:
         # Prediksi
         result = model.transform(spark_df)
-        
-        # Ambil hasil prediksi (Angka Index)
         pred_idx = result.select("prediction").collect()[0][0]
         
-        # ==================================================================
-        # MAPPING HASIL (SESUAI GAMBAR ANDA)
-        # ==================================================================
-        # Index 0.0 = normal
-        # Index 1.0 = tinggi
-        # Index 2.0 = severely stunted
-        # Index 3.0 = stunted
-        
+        # MAPPING HASIL (Sesuai gambar Colab Anda: 0=Normal, 1=Tinggi, 2=Sev.Stunted, 3=Stunted)
         labels_map = {
             0.0: "✅ Normal (Gizi Baik)",
             1.0: "📏 Tinggi (Perawakan Tinggi)",
@@ -62,34 +68,34 @@ def predict_stunting(umur, tinggi, jk):
             3.0: "⚠️ Pendek (Stunted)"
         }
         
-        # Ambil teks status berdasarkan index
         status_teks = labels_map.get(pred_idx, f"Tidak Diketahui (Index: {pred_idx})")
         
-        # Logika Saran Sederhana
+        # Saran
         saran = ""
         if "Sangat Pendek" in status_teks or "Pendek" in status_teks:
-            saran = "\n\nSaran: 🩺 Segera konsultasikan ke Puskesmas, Posyandu, atau Dokter Anak untuk penanganan gizi lebih lanjut."
+            saran = "\n\nSaran: 🩺 Pertumbuhan anak di bawah standar. Segera konsultasikan ke Posyandu/Dokter."
         elif "Normal" in status_teks:
-            saran = "\n\nSaran: 👍 Pertahankan asupan gizi seimbang (protein hewani) dan pantau terus tumbuh kembang anak."
+            saran = "\n\nSaran: 👍 Pertumbuhan sehat. Pertahankan nutrisi."
         elif "Tinggi" in status_teks:
-            saran = "\n\nSaran: 👌 Pertumbuhan tinggi badan anak sangat baik (di atas rata-rata). Tetap jaga asupan nutrisi."
+            saran = "\n\nSaran: 👌 Tumbuh kembang pesat di atas rata-rata."
             
         return status_teks + saran
         
     except Exception as e:
         return f"Terjadi kesalahan: {str(e)}"
 
-# --- 4. TAMPILAN UI (GRADIO) ---
+# --- 4. UI GRADIO ---
 ui = gr.Interface(
     fn=predict_stunting,
     inputs=[
-        gr.Number(label="Umur (bulan)", value=12),
-        gr.Number(label="Tinggi Badan (cm)", value=75),
+        # Slider dibatasi max 19
+        gr.Slider(minimum=0, maximum=19, step=1, label="Umur (Bulan)", info="Sesuai Dataset: 0 - 19 Bulan"),
+        gr.Number(label="Tinggi Badan (cm)", value=70),
         gr.Dropdown(["Laki-laki", "Perempuan"], label="Jenis Kelamin", value="Laki-laki")
     ],
-    outputs=gr.Textbox(label="Hasil Analisis Status Gizi"),
+    outputs=gr.Textbox(label="Hasil Analisis"),
     title="Sistem Deteksi Dini Stunting 👶",
-    description="Masukkan data balita untuk mengetahui status gizi. Sistem menggunakan AI (Random Forest) untuk analisis.",
+    description="Sistem prediksi status gizi balita menggunakan Random Forest (PySpark).",
     theme="soft"
 )
 
